@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS OS v9.0 - Sentient Operating System</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --cyan: #00f0ff;
+            --magenta: #ff00aa;
+            --green: #00ff88;
+            --yellow: #fbbf24;
+            --bg: #000001;
+            --card-bg: rgba(0, 20, 30, 0.8);
+            --border: rgba(0, 240, 255, 0.2);
+        }
+        body {
+            font-family: 'Courier New', monospace;
+            background: var(--bg);
+            color: #e5e7eb;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        .boot-screen {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            background: var(--bg);
+        }
+        .boot-screen.hidden { display: none; }
+        .boot-logo {
+            font-size: 6rem;
+            font-weight: bold;
+            color: var(--cyan);
+            text-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan), 0 0 40px var(--cyan);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .boot-subtitle {
+            font-size: 0.875rem;
+            color: var(--magenta);
+            letter-spacing: 0.3em;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .boot-terminal {
+            width: 320px;
+            height: 144px;
+            background: rgba(0, 10, 20, 0.9);
+            border: 1px solid rgba(0, 240, 255, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 3rem;
+            font-size: 0.75rem;
+            overflow: hidden;
+        }
+        .boot-line { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .boot-line.active { color: var(--cyan); }
+        .boot-line.done { color: var(--green); }
+        .boot-progress {
+            width: 320px;
+            height: 8px;
+            background: rgba(0, 240, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 1rem;
+            overflow: hidden;
+        }
+        .boot-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--cyan), var(--magenta));
+            border-radius: 4px;
+            box-shadow: 0 0 15px var(--cyan);
+            transition: width 0.2s;
+        }
+        .boot-percent { text-align: center; font-size: 0.75rem; color: #6b7280; margin-top: 8px; }
+        .skip-btn {
+            width: 320px;
+            margin-top: 1rem;
+            padding: 8px;
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid rgba(0, 240, 255, 0.5);
+            border-radius: 4px;
+            color: var(--cyan);
+            font-family: inherit;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .skip-btn:hover { background: rgba(0, 240, 255, 0.2); transform: scale(1.02); }
+        .skip-btn.hidden { display: none; }
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.05;
+            background-image: linear-gradient(rgba(0, 240, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 240, 255, 0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: 1;
+        }
+        #particleCanvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+        .notification {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            padding: 12px 24px;
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid rgba(0, 255, 136, 0.5);
+            border-radius: 8px;
+            color: var(--green);
+            font-size: 0.875rem;
+            z-index: 200;
+            animation: slideIn 0.3s ease-out;
+        }
+        .notification.hidden { display: none; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .init-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 1, 0.95);
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .init-overlay.hidden { display: none; }
+        .init-ring {
+            width: 160px;
+            height: 160px;
+            border: 2px solid rgba(0, 240, 255, 0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 40px rgba(0, 240, 255, 0.3);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        .init-ring span { font-size: 3rem; animation: pulse 1s ease-in-out infinite; }
+        .init-title { font-size: 1.5rem; color: var(--cyan); text-shadow: 0 0 10px var(--cyan); margin-top: 2rem; margin-bottom: 0.5rem; }
+        .init-stage { font-size: 1rem; color: var(--magenta); animation: pulse 1s ease-in-out infinite; }
+        .init-progress { width: 320px; height: 12px; background: rgba(0, 240, 255, 0.1); border-radius: 6px; margin-top: 1.5rem; overflow: hidden; }
+        .init-progress-bar { height: 100%; background: linear-gradient(90deg, var(--cyan), var(--magenta), var(--green)); border-radius: 6px; box-shadow: 0 0 20px rgba(0, 240, 255, 0.5); transition: width 0.15s; }
+        .init-percent { text-align: center; font-size: 0.875rem; color: #6b7280; margin-top: 8px; }
+        .system-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 8px;
+            text-align: center;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.15), transparent);
+            border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+            font-size: 0.875rem;
+            color: var(--green);
+            text-shadow: 0 0 10px var(--green);
+            z-index: 50;
+            pointer-events: none;
+        }
+        .system-banner.hidden { display: none; }
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            border-bottom: 1px solid var(--border);
+            background: rgba(0, 0, 1, 0.8);
+            backdrop-filter: blur(12px);
+            z-index: 40;
+            transition: margin-top 0.3s;
+        }
+        header.has-banner { margin-top: 36px; }
+        .header-content { max-width: 1280px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; }
+        .logo { font-size: 1.5rem; font-weight: bold; color: var(--cyan); text-shadow: 0 0 10px var(--cyan); cursor: pointer; transition: transform 0.3s; }
+        .logo:hover { transform: scale(1.05); }
+        .logo-badge { display: inline-flex; align-items: center; gap: 8px; }
+        .version-badge { padding: 2px 8px; background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 4px; font-size: 0.75rem; color: var(--cyan); }
+        .status-badge { padding: 2px 8px; background: rgba(0, 255, 136, 0.2); border: 1px solid rgba(0, 255, 136, 0.5); border-radius: 4px; font-size: 0.75rem; color: var(--green); animation: pulse 2s ease-in-out infinite; }
+        .status-badge.standby { background: rgba(255, 170, 0, 0.1); border-color: rgba(255, 170, 0, 0.3); color: #ffaa00; }
+        nav { display: flex; align-items: center; gap: 4px; }
+        nav button { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: transparent; border: none; border-radius: 8px; color: #9ca3af; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.3s; }
+        nav button:hover { background: rgba(0, 240, 255, 0.1); }
+        nav button.active { background: rgba(0, 240, 255, 0.1); color: var(--cyan); }
+        .header-actions { display: flex; align-items: center; gap: 12px; }
+        .mobile-menu-btn { display: none; padding: 8px; background: transparent; border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 8px; cursor: pointer; }
+        .mobile-menu-btn span { display: block; width: 20px; height: 2px; background: var(--cyan); margin-bottom: 4px; }
+        .mobile-menu-btn span:last-child { margin-bottom: 0; }
+        @media (max-width: 1024px) { nav { display: none; } .mobile-menu-btn { display: block; } }
+        .mobile-menu { display: none; border-top: 1px solid var(--border); padding: 16px; background: rgba(0, 0, 1, 0.98); grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .mobile-menu.open { display: grid; }
+        .mobile-menu button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; background: transparent; border: none; border-radius: 8px; color: #9ca3af; font-family: inherit; font-size: 0.75rem; cursor: pointer; }
+        .mobile-menu button.active { background: rgba(0, 240, 255, 0.1); color: var(--cyan); }
+        main { position: relative; z-index: 20; max-width: 1280px; margin: 0 auto; padding: 96px 16px 32px; transition: margin-top 0.3s; }
+        main.has-banner { padding-top: 128px; }
+        .hero { text-align: center; margin-bottom: 4rem; }
+        .hero h1 { font-size: clamp(2.5rem, 8vw, 5rem); font-weight: bold; background: linear-gradient(135deg, var(--cyan) 0%, var(--magenta) 50%, var(--cyan) 100%); background-size: 200% 200%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; animation: gradient 3s ease infinite; margin-bottom: 1rem; }
+        @keyframes gradient { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .hero p { font-size: 1.125rem; color: #9ca3af; max-width: 640px; margin: 0 auto 2rem; }
+        .hero-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; }
+        .btn { padding: 12px 24px; border-radius: 8px; font-family: inherit; font-weight: 500; cursor: pointer; transition: all 0.3s; font-size: 1rem; }
+        .btn-primary { background: linear-gradient(135deg, var(--cyan), #00a0cc); color: #000; border: none; box-shadow: 0 0 30px rgba(0, 240, 255, 0.4); }
+        .btn-primary:hover { transform: scale(1.05); }
+        .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+        .btn-primary.active { background: linear-gradient(135deg, var(--green), #00aa55); box-shadow: 0 0 30px rgba(0, 255, 136, 0.4); }
+        .btn-outline { background: transparent; border: 1px solid rgba(255, 0, 170, 0.5); color: var(--magenta); }
+        .btn-outline:hover { transform: scale(1.05); box-shadow: 0 0 20px rgba(255, 0, 170, 0.3); }
+        .network-activity { margin-bottom: 2rem; padding: 16px; background: rgba(0, 20, 30, 0.5); border: 1px solid var(--border); border-radius: 12px; }
+        .network-activity.hidden { display: none; }
+        .network-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.875rem; }
+        .network-header span:first-child { color: var(--cyan); }
+        .network-header span:last-child { color: #6b7280; }
+        .network-bars { display: flex; align-items: flex-end; gap: 4px; height: 64px; }
+        .network-bar { flex: 1; border-radius: 2px 2px 0 2px; background: linear-gradient(to top, var(--cyan), var(--magenta)); transition: height 0.15s; }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-bottom: 4rem; }
+        @media (min-width: 768px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
+        .stat-card { padding: 24px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: all 0.5s; }
+        .stat-card:hover { transform: scale(1.05); }
+        .stat-card.active { border-color: rgba(0, 255, 136, 0.3); box-shadow: 0 0 20px rgba(0, 255, 136, 0.1); }
+        .stat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .stat-icon { font-size: 1.25rem; }
+        .stat-label { font-size: 0.875rem; color: #9ca3af; }
+        .stat-value { font-size: 1.5rem; font-weight: bold; font-family: inherit; transition: all 0.3s; }
+        .stat-value.cyan { color: var(--cyan); }
+        .stat-value.magenta { color: var(--magenta); }
+        .stat-value.green { color: var(--green); }
+        .stat-value.yellow { color: var(--yellow); }
+        .stat-progress { height: 4px; background: rgba(0, 240, 255, 0.1); border-radius: 2px; margin-top: 12px; overflow: hidden; }
+        .stat-progress-bar { height: 100%; background: linear-gradient(90deg, var(--cyan), var(--magenta)); border-radius: 2px; }
+        .section-title { font-size: 1.5rem; font-weight: bold; color: var(--cyan); text-align: center; margin-bottom: 2rem; }
+        .features-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 4rem; }
+        @media (min-width: 768px) { .features-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (min-width: 1024px) { .features-grid { grid-template-columns: repeat(4, 1fr); } }
+        .feature-card { padding: 24px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: all 0.3s; }
+        .feature-card:hover { transform: scale(1.05) translateY(-8px); }
+        .feature-icon { font-size: 3rem; margin-bottom: 1rem; transition: transform 0.3s; }
+        .feature-card:hover .feature-icon { transform: scale(1.1); }
+        .feature-title { font-size: 1.125rem; font-weight: bold; color: #fff; margin-bottom: 0.5rem; }
+        .feature-desc { font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.75rem; }
+        .feature-badge { display: inline-block; padding: 4px 8px; background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.2); border-radius: 4px; font-size: 0.75rem; color: var(--cyan); }
+        .terminal { background: rgba(0, 5, 10, 0.95); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 4rem; }
+        .terminal-header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: rgba(0, 240, 255, 0.1); }
+        .terminal-dot { width: 12px; height: 12px; border-radius: 50%; cursor: pointer; transition: transform 0.3s; }
+        .terminal-dot:hover { transform: scale(1.1); }
+        .terminal-dot.red { background: #ff5f56; }
+        .terminal-dot.yellow { background: #ffbd2e; }
+        .terminal-dot.green { background: #27ca40; }
+        .terminal-title { margin-left: 16px; font-size: 0.75rem; color: #6b7280; }
+        .terminal-body { padding: 16px; font-size: 0.875rem; height: 256px; overflow-y: auto; color: var(--cyan); }
+        .terminal-line { margin-bottom: 12px; }
+        .terminal-prompt { color: var(--green); }
+        .terminal-path { color: #60a5fa; }
+        .terminal-output { margin-top: 4px; white-space: pre-wrap; color: #9ca3af; }
+        .terminal-input-line { display: flex; align-items: center; }
+        .terminal-input { flex: 1; background: transparent; border: none; outline: none; font-family: inherit; font-size: 0.875rem; color: var(--cyan); caret-color: var(--cyan); margin-left: 8px; }
+        .image-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+        @media (min-width: 1024px) { .image-grid { grid-template-columns: repeat(2, 1fr); } }
+        .image-card { padding: 24px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; }
+        .image-card h3 { font-size: 1.125rem; font-weight: bold; color: var(--cyan); margin-bottom: 1rem; }
+        .image-textarea { width: 100%; height: 128px; padding: 16px; background: rgba(0, 10, 20, 0.8); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 8px; color: #fff; font-family: inherit; font-size: 0.875rem; resize: none; outline: none; }
+        .image-textarea:focus { box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.25); }
+        .style-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 1rem; }
+        .style-btn { padding: 4px 12px; background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 9999px; color: var(--cyan); font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.3s; }
+        .style-btn:hover { transform: scale(1.05); }
+        .style-btn.active { background: rgba(0, 240, 255, 0.3); border-color: rgba(0, 240, 255, 0.6); }
+        .image-select-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: 1rem; }
+        .image-select { width: 100%; padding: 8px; background: rgba(0, 10, 20, 0.8); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 4px; color: #fff; font-family: inherit; font-size: 0.875rem; }
+        .image-error { margin-top: 1rem; padding: 12px; background: rgba(255, 0, 100, 0.1); border: 1px solid rgba(255, 0, 100, 0.3); border-radius: 8px; color: #ff6b6b; font-size: 0.875rem; }
+        .image-error.hidden { display: none; }
+        .generate-btn { width: 100%; margin-top: 1rem; padding: 12px; background: linear-gradient(135deg, var(--magenta), #aa0066); border: none; border-radius: 8px; color: #fff; font-family: inherit; font-size: 1rem; cursor: pointer; transition: all 0.3s; }
+        .generate-btn:hover { transform: scale(1.02); }
+        .generate-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+        .image-preview { aspect-ratio: 1; background: rgba(0, 10, 20, 0.8); border: 1px dashed rgba(0, 240, 255, 0.3); border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .image-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .image-preview-content { text-align: center; }
+        .image-preview-content .icon { font-size: 4rem; margin-bottom: 1rem; }
+        .image-preview-content p { font-size: 0.875rem; color: #6b7280; }
+        .image-actions { display: flex; gap: 8px; margin-top: 1rem; }
+        .image-actions button { flex: 1; padding: 8px; background: transparent; border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 4px; color: var(--cyan); font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.3s; }
+        .image-actions button:hover { background: rgba(0, 240, 255, 0.1); }
+        .image-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .chat-container { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+        @media (min-width: 1024px) { .chat-container { grid-template-columns: 256px 1fr; } }
+        .chat-contacts { padding: 16px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; }
+        .contacts-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+        .contacts-header h3 { font-weight: bold; color: var(--cyan); }
+        .online-badge { padding: 2px 8px; background: rgba(0, 255, 136, 0.2); border-radius: 9999px; font-size: 0.75rem; color: var(--green); }
+        .contact-item { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.3s; }
+        .contact-item:hover { background: rgba(0, 240, 255, 0.1); }
+        .contact-avatar { font-size: 1.5rem; }
+        .contact-info { flex: 1; }
+        .contact-name { font-size: 0.875rem; color: #fff; }
+        .contact-status { font-size: 0.75rem; color: #6b7280; }
+        .contact-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+        .contact-dot.away { background: var(--yellow); }
+        .chat-window { display: flex; flex-direction: column; height: 500px; background: rgba(0, 10, 20, 0.8); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid rgba(0, 240, 255, 0.1); }
+        .chat-header-left { display: flex; align-items: center; gap: 12px; }
+        .chat-header-avatar { font-size: 1.5rem; }
+        .chat-header-name { font-weight: bold; color: #fff; }
+        .chat-header-status { font-size: 0.75rem; color: var(--green); }
+        .chat-messages { flex: 1; padding: 16px; overflow-y: auto; }
+        .message { display: flex; gap: 12px; margin-bottom: 1rem; }
+        .message.user { flex-direction: row-reverse; }
+        .message-avatar { font-size: 1.25rem; flex-shrink: 0; }
+        .message-content { max-width: 288px; padding: 12px; border-radius: 8px; font-size: 0.875rem; color: #e5e7eb; }
+        .message.assistant .message-content { background: rgba(0, 240, 255, 0.1); }
+        .message.user .message-content { background: rgba(0, 255, 136, 0.1); }
+        .message-time { font-size: 0.75rem; color: #6b7280; margin-top: 4px; }
+        .typing-indicator { display: flex; gap: 4px; padding: 12px; background: rgba(0, 240, 255, 0.1); border-radius: 8px; width: fit-content; }
+        .typing-indicator span { width: 8px; height: 8px; background: var(--cyan); border-radius: 50%; animation: bounce 1s ease-in-out infinite; }
+        .typing-indicator span:nth-child(2) { animation-delay: 150ms; }
+        .typing-indicator span:nth-child(3) { animation-delay: 300ms; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        .chat-input-area { padding: 16px; border-top: 1px solid rgba(0, 240, 255, 0.1); }
+        .chat-input-row { display: flex; gap: 8px; }
+        .chat-input { flex: 1; padding: 12px; background: rgba(0, 10, 20, 0.8); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 8px; color: #fff; font-family: inherit; font-size: 0.875rem; outline: none; }
+        .chat-input:focus { box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.25); }
+        .chat-send-btn { padding: 12px 24px; background: linear-gradient(135deg, var(--cyan), #00a0cc); border: none; border-radius: 8px; color: #000; font-family: inherit; font-weight: 500; cursor: pointer; transition: all 0.3s; }
+        .chat-send-btn:hover { transform: scale(1.05); }
+        .chat-send-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+        .ai-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+        @media (min-width: 1024px) { .ai-grid { grid-template-columns: 2fr 1fr; } }
+        .ai-card { padding: 24px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; }
+        .ai-card h3 { font-size: 1.125rem; font-weight: bold; color: var(--cyan); margin-bottom: 1rem; }
+        .ai-model-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+        .ai-select { padding: 8px; background: rgba(0, 10, 20, 0.8); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 4px; color: #fff; font-family: inherit; font-size: 0.875rem; }
+        .ai-textarea { width: 100%; height: 128px; padding: 16px; background: rgba(0, 10, 20, 0.8); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 8px; color: #fff; font-family: inherit; font-size: 0.875rem; resize: none; outline: none; }
+        .ai-actions { display: flex; gap: 8px; margin-top: 1rem; }
+        .ai-btn { flex: 1; padding: 12px; border-radius: 8px; font-family: inherit; font-size: 1rem; cursor: pointer; transition: all 0.3s; }
+        .ai-btn-primary { background: linear-gradient(135deg, var(--cyan), #00a0cc); border: none; color: #000; }
+        .ai-btn-outline { background: transparent; border: 1px solid rgba(0, 240, 255, 0.3); color: var(--cyan); }
+        .ai-btn:hover { transform: scale(1.02); }
+        .ai-btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+        .ai-response { min-height: 192px; padding: 16px; background: rgba(0, 10, 20, 0.8); border: 1px solid rgba(0, 240, 255, 0.1); border-radius: 8px; font-size: 0.875rem; white-space: pre-wrap; color: #e5e7eb; }
+        .ai-response-placeholder { display: flex; align-items: center; justify-content: center; height: 128px; text-align: center; }
+        .ai-response-placeholder .icon { font-size: 3rem; margin-bottom: 1rem; }
+        .ai-response-placeholder p { color: #6b7280; }
+        .quick-prompts { margin-top: 1rem; }
+        .quick-prompts h4 { font-weight: bold; color: var(--cyan); margin-bottom: 1rem; }
+        .quick-prompt-btn { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px; background: transparent; border: 1px solid rgba(0, 240, 255, 0.1); border-radius: 8px; color: #e5e7eb; font-family: inherit; font-size: 0.75rem; text-align: left; cursor: pointer; transition: background 0.3s; margin-bottom: 8px; }
+        .quick-prompt-btn:hover { background: rgba(0, 240, 255, 0.1); }
+        .settings-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+        @media (min-width: 768px) { .settings-grid { grid-template-columns: repeat(2, 1fr); } }
+        .settings-card { padding: 24px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; }
+        .settings-card h3 { font-size: 1.125rem; font-weight: bold; color: var(--cyan); margin-bottom: 1rem; }
+        .setting-row { margin-bottom: 1rem; }
+        .setting-label { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.875rem; }
+        .setting-label span:first-child { color: #9ca3af; }
+        .setting-label span:last-child { color: var(--cyan); }
+        .setting-slider { width: 100%; height: 8px; border-radius: 4px; appearance: none; background: rgba(0, 240, 255, 0.1); cursor: pointer; }
+        .setting-slider::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--cyan); cursor: pointer; }
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+        .toggle-label { font-size: 0.875rem; color: #9ca3af; }
+        .toggle { width: 48px; height: 24px; border-radius: 12px; background: rgba(100, 100, 100, 0.3); border: 1px solid rgba(100, 100, 100, 0.5); cursor: pointer; position: relative; transition: all 0.3s; }
+        .toggle.active { background: rgba(0, 255, 136, 0.3); border-color: rgba(0, 255, 136, 0.5); }
+        .toggle::after { content: ''; position: absolute; width: 20px; height: 20px; border-radius: 50%; background: #6b7280; top: 1px; left: 1px; transition: all 0.3s; }
+        .toggle.active::after { transform: translateX(24px); background: var(--green); box-shadow: 0 0 10px var(--green); }
+        .settings-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem; }
+        .game-canvas-container { position: relative; background: linear-gradient(135deg, #0a0a0a, #1a1a2e); border-radius: 12px; overflow: hidden; }
+        .game-canvas { width: 100%; display: block; }
+        .game-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: rgba(0, 20, 40, 0.8); border-bottom: 1px solid rgba(0, 240, 255, 0.1); }
+        .game-toolbar-left { display: flex; align-items: center; gap: 16px; }
+        .game-toolbar-left span { font-size: 0.875rem; color: var(--cyan); }
+        .game-score { padding: 4px 8px; background: rgba(0, 255, 136, 0.1); border-radius: 4px; font-size: 0.75rem; color: var(--green); }
+        .game-toolbar-right { display: flex; gap: 8px; }
+        .game-btn { padding: 6px 16px; border-radius: 4px; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.3s; }
+        .game-btn.play { background: rgba(0, 255, 136, 0.2); border: 1px solid var(--green); color: var(--green); }
+        .game-btn.stop { background: rgba(255, 0, 100, 0.2); border: 1px solid #ff6b6b; color: #ff6b6b; }
+        .game-btn:hover { transform: scale(1.05); }
+        .game-sidebar { display: flex; flex-direction: column; gap: 1rem; }
+        .hierarchy-card { padding: 16px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; }
+        .hierarchy-card h3 { font-weight: bold; color: var(--cyan); margin-bottom: 12px; }
+        .hierarchy-item { width: 100%; padding: 6px 8px; border-radius: 4px; font-size: 0.75rem; text-align: left; background: transparent; border: none; color: #9ca3af; cursor: pointer; transition: all 0.3s; margin-bottom: 4px; }
+        .hierarchy-item:hover { background: rgba(0, 240, 255, 0.1); }
+        .hierarchy-item.selected { background: rgba(0, 240, 255, 0.15); box-shadow: 0 0 0 1px var(--cyan); }
+        .hierarchy-item.player { color: var(--cyan); }
+        .hierarchy-item.enemy { color: var(--magenta); }
+        .hierarchy-item.coin { color: var(--yellow); }
+        .build-card { padding: 16px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; }
+        .build-card h3 { font-weight: bold; color: var(--cyan); margin-bottom: 12px; }
+        .build-btn { width: 100%; padding: 8px; background: transparent; border: 1px solid rgba(0, 240, 255, 0.1); border-radius: 4px; font-family: inherit; font-size: 0.75rem; color: #9ca3af; text-align: left; cursor: pointer; transition: all 0.3s; margin-bottom: 8px; }
+        .build-btn:hover { background: rgba(0, 240, 255, 0.1); }
+        footer { position: relative; z-index: 20; border-top: 1px solid var(--border); padding: 2rem 0; margin-top: 4rem; text-align: center; }
+        footer p { font-size: 0.875rem; color: #6b7280; }
+        footer p:last-child { font-size: 0.75rem; color: #4b5563; margin-top: 0.5rem; }
+        .hidden { display: none !important; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(0, 10, 20, 0.5); }
+        ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--cyan), var(--magenta)); border-radius: 3px; }
+        .spinner { width: 40px; height: 40px; border: 3px solid rgba(0, 240, 255, 0.1); border-top-color: var(--cyan); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="bootScreen" class="boot-screen">
+        <canvas id="bootCanvas"></canvas>
+        <div class="boot-logo">NEXUS</div>
+        <div class="boot-subtitle">OPERATING SYSTEM v9.0</div>
+        <div class="boot-terminal" id="bootTerminal"></div>
+        <div class="boot-progress"><div class="boot-progress-bar" id="bootProgressBar"></div></div>
+        <div class="boot-percent" id="bootPercent">0% Complete</div>
+        <button class="skip-btn hidden" id="skipBtn" onclick="skipBoot()">[ SKIP INTRO ]</button>
+    </div>
+    <div id="mainApp" class="hidden">
+        <canvas id="particleCanvas"></canvas>
+        <div class="grid-bg"></div>
+        <div id="notification" class="notification hidden"></div>
+        <div id="initOverlay" class="init-overlay hidden">
+            <div class="init-ring"><span>🧬</span></div>
+            <h2 class="init-title">INITIALIZING SYSTEM</h2>
+            <p class="init-stage" id="initStage">Scanning Neural Architecture...</p>
+            <div class="init-progress"><div class="init-progress-bar" id="initProgressBar"></div></div>
+            <div class="init-percent" id="initPercent">0% Complete</div>
+        </div>
+        <div id="systemBanner" class="system-banner hidden">✓ SYSTEM INITIALIZED - ALL SUBSYSTEMS OPERATIONAL</div>
+        <header id="header">
+            <div class="header-content">
+                <div class="logo-badge">
+                    <span class="logo" onclick="navigate('Dashboard')">NEXUS</span>
+                    <span class="version-badge">v9.0</span>
+                    <span id="headerStatus" class="status-badge standby">STANDBY</span>
+                </div>
+                <nav id="nav"></nav>
+                <div class="header-actions">
+                    <div class="status-badge standby" id="statusIndicator"><span style="width:8px;height:8px;border-radius:50%;background:#ffaa00;animation:pulse 2s infinite;display:inline-block;margin-right:4px;"></span><span id="statusText">STANDBY</span></div>
+                    <button class="mobile-menu-btn" onclick="toggleMobileMenu()"><span></span><span></span><span></span></button>
+                </div>
+            </div>
+            <div id="mobileMenu" class="mobile-menu"></div>
+        </header>
+        <main id="mainContent"></main>
+    </div>
+    <script>
+        const state = {
+            stage: 'boot', bootProgress: 0, bootStage: 0, systemActive: false,
+            isInitializing: false, initProgress: 0, initStage: 0,
+            activeNav: 'Dashboard', mobileMenuOpen: false,
+            settings: { neuralPower: 75, quantumAllocation: 60, memoryCache: 50, biometric: true, quantumEncryption: true, intrusionDetection: true, autoUpdate: false },
+            chatMessages: [{ role: 'assistant', content: 'System ready. How may I assist you?', time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) }],
+            chatInput: '', isChatLoading: false,
+            imagePrompt: '', imageStyle: 'Photorealistic', imageSize: '1024x1024',
+            generatedImage: null, isGeneratingImage: false, imageError: null, recentImages: [],
+            aiPrompt: '', aiResponse: '', isAiLoading: false, selectedModel: 'GPT-5 Quantum',
+            terminalInput: '', terminalHistory: [{ input: 'welcome', output: 'Welcome to NEXUS OS Terminal. Type "help" for commands.', color: '#00f0ff' }],
+            networkData: Array.from({length:20}, () => Math.random() * 100),
+            systemStats: [
+                { label: 'Neural Processing', value: 94, unit: '%', color: 'cyan', key: 'neural', icon: '🧠' },
+                { label: 'Quantum Memory', value: 12.4, unit: 'TB', color: 'magenta', key: 'quantum', icon: '⚡' },
+                { label: 'AI Sentience', value: 99.7, unit: '%', color: 'green', key: 'ai', icon: '🤖' },
+                { label: 'Network Nodes', value: 2847, unit: '', color: 'yellow', key: 'nodes', icon: '🌐' }
+            ],
+            gameScore: 0, isGamePlaying: false, isBuilding: false, buildProgress: 0, audio: null
+        };
+        const BOOT_STAGES = [{id:'bios',label:'BIOS Initialization'},{id:'memory',label:'Neural Memory Calibration'},{id:'quantum',label:'Quantum Core Sync'},{id:'ai',label:'AI Consciousness Bootstrap'},{id:'network',label:'Neural Network Mesh'},{id:'security',label:'Security Protocols Active'},{id:'ready',label:'System Ready'}];
+        const INIT_STAGES = ['Scanning Neural Architecture...','Quantum Core Synchronization...','Allocating Neural Pathways...','Activating AI Subsystems...','Establishing Mesh Network...','Enabling Security Matrix...','Finalizing Initialization...','System Fully Operational!'];
+        const NAV_ITEMS = [{id:'Dashboard',icon:'📊',label:'Dashboard'},{id:'ImageGen',icon:'🎨',label:'Image'},{id:'Chat',icon:'💬',label:'Chat'},{id:'Game',icon:'🎮',label:'Game'},{id:'AI',icon:'🤖',label:'AI Lab'},{id:'Settings',icon:'🔧',label:'Settings'}];
+        const COMMANDS = {help:{output:'Commands: help, status, neofetch, clear, about',color:'#00f0ff'},status:{output:'System: OPERATIONAL\nCPU: 12% | Memory: 34%\nAI Core: ACTIVE',color:'#00ff88'},neofetch:{output:'\n╔═══════════════════════════════╗\n║     NEXUS OS v9.0            ║\n╠═══════════════════════════════╣\n║  AI Level: Tier 7            ║\n║  Status: OPERATIONAL         ║\n╚═══════════════════════════════╝',color:'#00f0ff'},about:{output:'NEXUS OS v9.0 - Sentient Operating System\n"The future is sentient."',color:'#00f0ff'},clear:{output:''}};
+        function showNotification(m){const e=document.getElementById('notification');e.textContent='✓ '+m;e.classList.remove('hidden');setTimeout(()=>e.classList.add('hidden'),3000);}
+        function runBoot(){const t=4000,s=t/BOOT_STAGES.length;let e=0;document.getElementById('skipBtn').classList.remove('hidden');const i=setInterval(()=>{e+=50;state.bootProgress=(e/t)*100;state.bootStage=Math.min(Math.floor(e/s),BOOT_STAGES.length-1);updateBootUI();if(e>=t){clearInterval(i);setTimeout(()=>{document.getElementById('bootScreen').classList.add('hidden');document.getElementById('mainApp').classList.remove('hidden');state.stage='dashboard';initParticles();render();showNotification('System ready. AI features enabled.');},400);}},50);}
+        function updateBootUI(){document.getElementById('bootProgressBar').style.width=state.bootProgress+'%';document.getElementById('bootPercent').textContent=Math.round(state.bootProgress)+'% Complete';let h='';for(let i=0;i<=state.bootStage;i++){const a=i===state.bootStage;h+='<div class="boot-line '+(a?'active':'done')+'"><span>'+(a?'▸':'✓')+'</span><span>'+BOOT_STAGES[i].label+'</span>'+(a?'<span style="animation:pulse 1s infinite">...</span>':'')+'</div>';}document.getElementById('bootTerminal').innerHTML=h;}
+        function skipBoot(){state.bootProgress=100;document.getElementById('bootScreen').classList.add('hidden');document.getElementById('mainApp').classList.remove('hidden');state.stage='dashboard';initParticles();render();}
+        function initParticles(){const c=document.getElementById('particleCanvas'),ctx=c.getContext('2d');function r(){c.width=window.innerWidth;c.height=window.innerHeight;}r();window.addEventListener('resize',r);const p=[];for(let i=0;i<80;i++)p.push({x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3,s:Math.random()*2+0.5,co:Math.random()>0.5?'#00f0ff':'#ff00aa',a:Math.random()*0.5+0.2});function an(){ctx.fillStyle='rgba(0, 0, 1, 0.08)';ctx.fillRect(0,0,c.width,c.height);p.forEach(x=>{x.x+=x.vx;x.y+=x.vy;x.vx*=0.98;x.vy*=0.98;if(x.x<0)x.x=c.width;if(x.x>c.width)x.x=0;if(x.y<0)x.y=c.height;if(x.y>c.height)x.y=0;ctx.beginPath();ctx.arc(x.x,x.y,x.s,0,Math.PI*2);ctx.fillStyle=x.co;ctx.globalAlpha=x.a;ctx.fill();ctx.globalAlpha=1;});requestAnimationFrame(an);}an();}
+        function initializeSystem(){if(state.isInitializing||state.systemActive)return;state.isInitializing=true;state.initProgress=0;state.initStage=0;document.getElementById('initOverlay').classList.remove('hidden');const t=2500,s=t/INIT_STAGES.length;let e=0;const i=setInterval(()=>{e+=50;state.initProgress=(e/t)*100;state.initStage=Math.min(Math.floor(e/s),INIT_STAGES.length-1);document.getElementById('initProgressBar').style.width=state.initProgress+'%';document.getElementById('initPercent').textContent=Math.round(state.initProgress)+'% Complete';document.getElementById('initStage').textContent=INIT_STAGES[state.initStage];if(e>=t){clearInterval(i);setTimeout(()=>{state.isInitializing=false;state.systemActive=true;document.getElementById('initOverlay').classList.add('hidden');document.getElementById('systemBanner').classList.remove('hidden');document.getElementById('header').classList.add('has-banner');document.getElementById('mainContent').classList.add('has-banner');document.getElementById('headerStatus').classList.remove('standby');document.getElementById('headerStatus').classList.add('active');document.getElementById('headerStatus').textContent='ACTIVE';document.getElementById('statusIndicator').classList.remove('standby');document.getElementById('statusIndicator').innerHTML='<span style="width:8px;height:8px;border-radius:50%;background:#00ff88;animation:pulse 2s infinite;display:inline-block;margin-right:4px;"></span><span>ONLINE</span>';showNotification('System initialized successfully!');startStatsAnimation();render();},400);}},50);}
+        function startStatsAnimation(){setInterval(()=>{state.systemStats=state.systemStats.map(s=>({...s,value:s.key==='neural'?Math.min(100,s.value+(Math.random()-0.5)*2):s.key==='quantum'?Math.min(16,s.value+(Math.random()-0.5)*0.3):s.key==='ai'?Math.min(100,s.value+(Math.random()-0.5)*0.1):Math.round(s.value+(Math.random()-0.5)*50)}));state.networkData=Array.from({length:20},()=>Math.random()*100);renderStats();renderNetworkBars();},500);}
+        function navigate(id){state.activeNav=id;state.mobileMenuOpen=false;document.getElementById('mobileMenu').classList.remove('open');render();}
+        function toggleMobileMenu(){state.mobileMenuOpen=!state.mobileMenuOpen;document.getElementById('mobileMenu').classList.toggle('open',state.mobileMenuOpen);}
+        function updateSetting(k,v){state.settings[k]=v;render();}
+        function resetSettings(){state.settings={neuralPower:75,quantumAllocation:60,memoryCache:50,biometric:true,quantumEncryption:true,intrusionDetection:true,autoUpdate:false};showNotification('Settings reset to defaults');render();}
+        function saveSettings(){showNotification('Settings saved successfully!');}
+        function handleTerminalCommand(c){const cmd=c.toLowerCase().trim(),r=COMMANDS[cmd];if(cmd==='clear')state.terminalHistory=[];else if(r)state.terminalHistory.push({input:c,output:r.output,color:r.color});else state.terminalHistory.push({input:c,output:'Command not found: '+cmd+'\nType "help" for commands.',color:'#ff5f56'});state.terminalInput='';render();}
+        
+        // Image Generation - Direct API call without demo mode
+        async function generateImage() {
+            if (!state.imagePrompt.trim()) {
+                state.imageError = 'Please enter a prompt';
+                render();
+                return;
+            }
+            state.isGeneratingImage = true;
+            state.imageError = null;
+            render();
+            try {
+                const response = await fetch('/api/generate-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        prompt: state.imagePrompt + ', ' + state.imageStyle.toLowerCase() + ' style', 
+                        size: state.imageSize 
+                    })
+                });
+                const data = await response.json();
+                if (data.success && data.image) {
+                    state.generatedImage = data.image;
+                    state.recentImages.unshift({ prompt: state.imagePrompt, image: data.image });
+                    state.recentImages = state.recentImages.slice(0, 5);
+                    showNotification('Image generated successfully!');
+                } else {
+                    state.imageError = data.error || 'Generation failed';
+                }
+            } catch (err) {
+                state.imageError = 'Connection error: ' + err.message;
+            }
+            state.isGeneratingImage = false;
+            render();
+        }
+        
+        // Chat - Direct API call
+        async function sendChatMessage() {
+            if (!state.chatInput.trim() || state.isChatLoading) return;
+            const userMessage = state.chatInput.trim();
+            state.chatMessages.push({ 
+                role: 'user', 
+                content: userMessage, 
+                time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) 
+            });
+            state.chatInput = '';
+            state.isChatLoading = true;
+            render();
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: state.chatMessages.map(m => ({ role: m.role, content: m.content })) })
+                });
+                const data = await response.json();
+                state.chatMessages.push({ 
+                    role: 'assistant', 
+                    content: data.message || 'Connection error', 
+                    time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) 
+                });
+            } catch {
+                state.chatMessages.push({ 
+                    role: 'assistant', 
+                    content: 'Connection issue. Please try again.', 
+                    time: new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) 
+                });
+            }
+            state.isChatLoading = false;
+            render();
+        }
+        
+        // AI Lab - Direct API call
+        async function sendAiRequest() {
+            if (!state.aiPrompt.trim() || state.isAiLoading) return;
+            state.isAiLoading = true;
+            state.aiResponse = '';
+            render();
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        messages: [{ role: 'user', content: state.aiPrompt }],
+                        systemPrompt: { role: 'system', content: 'You are ' + state.selectedModel + '. Provide detailed, technical responses.' }
+                    })
+                });
+                const data = await response.json();
+                state.aiResponse = data.message || 'Unable to get response';
+            } catch {
+                state.aiResponse = 'Connection error. Please try again.';
+            }
+            state.isAiLoading = false;
+            render();
+        }
+        
+        function startGame(){state.isGamePlaying=true;state.gameScore=0;render();runGame();}
+        function stopGame(){state.isGamePlaying=false;state.gameScore=0;render();}
+        function runGame(){const c=document.getElementById('gameCanvas');if(!c)return;const ctx=c.getContext('2d');let px=200,py=150,pvy=0,ex=400,ed=1,coins=[{x:300,y:200,c:false},{x:450,y:180,c:false}];const k={};const kd=e=>k[e.code]=true,ku=e=>k[e.code]=false;window.addEventListener('keydown',kd);window.addEventListener('keyup',ku);function gl(){if(!state.isGamePlaying){window.removeEventListener('keydown',kd);window.removeEventListener('keyup',ku);return;}ctx.fillStyle='#0a0a0a';ctx.fillRect(0,0,600,280);ctx.strokeStyle='rgba(0, 240, 255, 0.1)';for(let x=0;x<600;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,280);ctx.stroke();}for(let y=0;y<280;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(600,y);ctx.stroke();}if(k['ArrowLeft']||k['KeyA'])px-=4;if(k['ArrowRight']||k['KeyD'])px+=4;if((k['Space']||k['ArrowUp']||k['KeyW'])&&py>=150)pvy=-8;pvy+=0.4;py+=pvy;if(py>200){py=200;pvy=0;}px=Math.max(20,Math.min(580,px));ctx.fillStyle='#00ff88';ctx.fillRect(0,240,600,40);ctx.fillStyle='#00f0ff';ctx.shadowColor='#00f0ff';ctx.shadowBlur=10;ctx.fillRect(px-15,py-30,30,50);ctx.shadowBlur=0;ctx.fillStyle='#fff';ctx.fillRect(px-8,py-20,6,6);ctx.fillRect(px+2,py-20,6,6);ex+=ed*2;if(ex>550||ex<100)ed*=-1;ctx.fillStyle='#ff00aa';ctx.shadowColor='#ff00aa';ctx.shadowBlur=10;ctx.beginPath();ctx.arc(ex,240,20,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;coins.forEach(co=>{if(!co.c){const dx=px-co.x,dy=py-50-co.y;if(Math.sqrt(dx*dx+dy*dy)<30){co.c=true;state.gameScore+=10;render();}ctx.fillStyle='#fbbf24';ctx.beginPath();ctx.arc(co.x,co.y+50,12,0,Math.PI*2);ctx.fill();}});ctx.fillStyle='#00f0ff';ctx.font='14px monospace';ctx.fillText('Score: '+state.gameScore,20,25);ctx.fillText('Arrow Keys/WASD: Move, Space: Jump',20,270);requestAnimationFrame(gl);}gl();}
+        function buildGame(p){state.isBuilding=true;state.buildProgress=0;render();const i=setInterval(()=>{state.buildProgress+=10;render();if(state.buildProgress>=100){clearInterval(i);state.isBuilding=false;showNotification(p+' build complete!');render();}},200);}
+        function render(){renderNav();renderMobileMenu();renderContent();}
+        function renderNav(){document.getElementById('nav').innerHTML=NAV_ITEMS.map(i=>'<button class="'+(state.activeNav===i.id?'active':'')+'" onclick="navigate(\''+i.id+'\')"><span>'+i.icon+'</span></button>').join('');}
+        function renderMobileMenu(){document.getElementById('mobileMenu').innerHTML=NAV_ITEMS.map(i=>'<button class="'+(state.activeNav===i.id?'active':'')+'" onclick="navigate(\''+i.id+'\')"><span>'+i.icon+'</span><span>'+i.label+'</span></button>').join('');}
+        function renderContent(){const c=document.getElementById('mainContent');switch(state.activeNav){case'Dashboard':c.innerHTML=renderDashboard();break;case'ImageGen':c.innerHTML=renderImageGen();break;case'Chat':c.innerHTML=renderChat();break;case'Game':c.innerHTML=renderGame();break;case'AI':c.innerHTML=renderAI();break;case'Settings':c.innerHTML=renderSettings();break;default:c.innerHTML=renderDashboard();}}
+        function renderStats(){const e=document.getElementById('statsGrid');if(!e)return;e.innerHTML=state.systemStats.map(s=>'<div class="stat-card '+(state.systemActive?'active':'')+'"><div class="stat-header"><span class="stat-icon">'+s.icon+'</span><span class="stat-label">'+s.label+'</span></div><div class="stat-value '+s.color+'" style="'+(state.systemActive?'text-shadow: 0 0 15px currentColor':'')+'">'+(typeof s.value==='number'&&s.value<100?s.value.toFixed(s.value%1!==0?1:0):Math.round(s.value).toLocaleString())+(s.unit?'<span style="font-size:0.75rem;color:#6b7280">'+s.unit+'</span>':'')+'</div><div class="stat-progress"><div class="stat-progress-bar" style="width:'+(typeof s.value==='number'&&s.value<100?s.value:100)+'%"></div></div></div>').join('');}
+        function renderNetworkBars(){const e=document.getElementById('networkBars');if(!e)return;e.innerHTML=state.networkData.map(v=>'<div class="network-bar" style="height:'+v+'%"></div>').join('');}
+        function renderDashboard(){return'<section class="hero"><h1>'+(state.systemActive?'System Online':'Welcome to NEXUS OS')+'</h1><p>'+(state.systemActive?'All quantum neural pathways are active. The system is fully operational and ready for commands.':"The world's first sentient operating system. Powered by quantum computing and self-evolving neural networks.")+'</p><div class="hero-buttons"><button class="btn btn-primary '+(state.systemActive?'active':'')+'" onclick="initializeSystem()" '+(state.isInitializing||state.systemActive?'disabled':'')+'>'+(state.isInitializing?'INITIALIZING...':state.systemActive?'✓ SYSTEM ACTIVE':'Initialize System')+'</button><button class="btn btn-outline">View Documentation</button></div></section>'+(state.systemActive?'<section class="network-activity"><div class="network-header"><span>Network Activity</span><span>Real-time</span></div><div class="network-bars" id="networkBars">'+state.networkData.map(v=>'<div class="network-bar" style="height:'+v+'%"></div>').join('')+'</div></section>':'')+'<section class="stats-grid" id="statsGrid">'+state.systemStats.map(s=>'<div class="stat-card '+(state.systemActive?'active':'')+'"><div class="stat-header"><span class="stat-icon">'+s.icon+'</span><span class="stat-label">'+s.label+'</span></div><div class="stat-value '+s.color+'">'+(typeof s.value==='number'&&s.value<100?s.value.toFixed(s.value%1!==0?1:0):Math.round(s.value).toLocaleString())+(s.unit?'<span style="font-size:0.75rem;color:#6b7280">'+s.unit+'</span>':'')+'</div><div class="stat-progress"><div class="stat-progress-bar" style="width:'+(typeof s.value==='number'&&s.value<100?s.value:100)+'%"></div></div></div>').join('')+'</section><section><h2 class="section-title">Core Capabilities</h2><div class="features-grid">'+[{icon:'🧠',title:'Sentient AI Core',desc:'Self-evolving neural architecture',badge:'99.9% Accuracy'},{icon:'⚡',title:'Quantum Processing',desc:'Unprecedented performance',badge:'10^15 ops/sec'},{icon:'🔒',title:'Neural Security',desc:'Military-grade encryption',badge:'AES-512'},{icon:'🌐',title:'Global Mesh Network',desc:'10,000+ nodes worldwide',badge:'< 1ms Latency'}].map(f=>'<div class="feature-card"><div class="feature-icon">'+f.icon+'</div><h3 class="feature-title">'+f.title+'</h3><p class="feature-desc">'+f.desc+'</p><span class="feature-badge">'+f.badge+'</span></div>').join('')+'</div></section><section class="terminal"><div class="terminal-header"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span><span class="terminal-title">nexus@terminal ~ interactive</span></div><div class="terminal-body">'+state.terminalHistory.map(h=>'<div class="terminal-line"><div><span class="terminal-prompt">nexus@system</span>:<span class="terminal-path">~</span>$ '+h.input+'</div>'+(h.output?'<pre class="terminal-output" style="color:'+(h.color||'#9ca3af')+'">'+h.output+'</pre>':'')+'</div>').join('')+'<div class="terminal-input-line"><span class="terminal-prompt">nexus@system</span>:<span class="terminal-path">~</span>$<input type="text" class="terminal-input" value="'+state.terminalInput+'" oninput="state.terminalInput=this.value" onkeydown="if(event.key===\'Enter\' && this.value.trim()){handleTerminalCommand(this.value)}" placeholder="Type a command..."></div></div></section>';}
+        function renderImageGen(){return'<h2 class="section-title">🎨 AI Image Creation</h2><div class="image-grid"><div class="image-card"><h3>Create Image</h3><textarea class="image-textarea" placeholder="Describe the image you want to create..." oninput="state.imagePrompt=this.value">'+state.imagePrompt+'</textarea><div class="style-buttons">'+['Photorealistic','Anime','3D Render','Digital Art','Oil Painting','Watercolor'].map(s=>'<button class="style-btn '+(state.imageStyle===s?'active':'')+'" onclick="state.imageStyle=\''+s+'\';render()">'+s+'</button>').join('')+'</div><div class="image-select-row"><select class="image-select" onchange="state.imageSize=this.value"><option value="1024x1024">1024 x 1024</option><option value="768x1344">768 x 1344</option><option value="1344x768">1344 x 768</option></select></div>'+(state.imageError?'<div class="image-error">⚠️ '+state.imageError+'</div>':'')+'<button class="generate-btn" onclick="generateImage()" '+(state.isGeneratingImage?'disabled':'')+'>'+(state.isGeneratingImage?'⏳ Generating...':'✨ Generate Image')+'</button></div><div class="image-card"><h3>Preview</h3><div class="image-preview">'+(state.isGeneratingImage?'<div class="image-preview-content"><div class="spinner"></div><p style="margin-top:1rem;color:#6b7280">Generating...</p></div>':state.generatedImage?'<img src="'+state.generatedImage+'" alt="Generated">':'<div class="image-preview-content"><div class="icon">🖼️</div><p>Generated image will appear here</p></div>')+'</div><div class="image-actions"><button onclick="generateImage()" '+(!state.generatedImage||state.isGeneratingImage?'disabled':'')+'>🔄 Regenerate</button><button onclick="if(state.generatedImage){const a=document.createElement(\'a\');a.href=state.generatedImage;a.download=\'nexus-image.png\';a.click()}" '+(!state.generatedImage?'disabled':'')+'>⬇️ Download</button></div></div></div>';}
+        function renderChat(){return'<h2 class="section-title">💬 Neural Chat</h2><div class="chat-container"><div class="chat-contacts"><div class="contacts-header"><h3>Contacts</h3><span class="online-badge">5 online</span></div>'+[{name:'AI Core',status:'online',icon:'🤖'},{name:'Quantum Team',status:'online',icon:'⚛️'},{name:'Security Ops',status:'online',icon:'🔐'},{name:'Dev Squad',status:'away',icon:'👨‍💻'}].map(c=>'<div class="contact-item"><span class="contact-avatar">'+c.icon+'</span><div class="contact-info"><div class="contact-name">'+c.name+'</div><div class="contact-status">'+c.status+'</div></div><span class="contact-dot '+(c.status==='away'?'away':'')+'"></span></div>').join('')+'</div><div class="chat-window"><div class="chat-header"><div class="chat-header-left"><span class="chat-header-avatar">🤖</span><div><div class="chat-header-name">AI Core</div><div class="chat-header-status">Online • Quantum Neural Network</div></div></div></div><div class="chat-messages">'+state.chatMessages.map(m=>'<div class="message '+m.role+'"><span class="message-avatar">'+(m.role==='user'?'👤':'🤖')+'</span><div><div class="message-content">'+m.content+'</div><div class="message-time">'+m.time+'</div></div></div>').join('')+(state.isChatLoading?'<div class="message assistant"><span class="message-avatar">🤖</span><div class="typing-indicator"><span></span><span></span><span></span></div></div>':'')+'</div><div class="chat-input-area"><div class="chat-input-row"><input type="text" class="chat-input" placeholder="Type a message..." value="'+state.chatInput+'" oninput="state.chatInput=this.value" onkeydown="if(event.key===\'Enter\' && !event.shiftKey){event.preventDefault();sendChatMessage()}"><button class="chat-send-btn" onclick="sendChatMessage()" '+(state.isChatLoading||!state.chatInput.trim()?'disabled':'')+'>'+(state.isChatLoading?'...':'Send')+'</button></div></div></div></div>';}
+        function renderGame(){return'<h2 class="section-title">🎮 Game Studio</h2><div class="ai-grid"><div class="game-canvas-container"><div class="game-toolbar"><div class="game-toolbar-left"><span>Quantum Runner</span><span class="game-score">Score: '+state.gameScore+'</span></div><div class="game-toolbar-right">'+(state.isGamePlaying?'<button class="game-btn stop" onclick="stopGame()">⏹ Stop</button>':'<button class="game-btn play" onclick="startGame()">▶ Play</button>')+'</div></div><canvas id="gameCanvas" class="game-canvas" width="600" height="280"></canvas>'+(state.isGamePlaying?'':'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5)"><div style="text-align:center"><div style="font-size:3rem;margin-bottom:0.5rem">🎮</div><p style="color:#6b7280">Click Play to start</p></div></div>')+'</div><div class="game-sidebar"><div class="hierarchy-card"><h3>Game Objects</h3><button class="hierarchy-item player selected">▸ Player (Cyan)</button><button class="hierarchy-item enemy">▸ Enemy (Magenta)</button><button class="hierarchy-item coin">▸ Coins (Yellow)</button></div><div class="build-card"><h3>Build Game</h3><button class="build-btn" onclick="buildGame(\'Windows\')">💻 Build for Windows</button><button class="build-btn" onclick="buildGame(\'macOS\')">🍎 Build for macOS</button><button class="build-btn" onclick="buildGame(\'Web\')">🌐 Build for Web</button>'+(state.isBuilding?'<div style="margin-top:0.5rem"><div class="stat-progress"><div class="stat-progress-bar" style="width:'+state.buildProgress+'%"></div></div><p style="font-size:0.75rem;color:#6b7280;margin-top:4px">'+state.buildProgress+'%</p></div>':'')+'</div></div></div>';}
+        function renderAI(){return'<h2 class="section-title">🤖 AI Lab</h2><div class="ai-grid"><div class="ai-card"><div class="ai-model-row"><h3>Neural Query</h3><select class="ai-select" onchange="state.selectedModel=this.value"><option value="GPT-5 Quantum">GPT-5 Quantum</option><option value="Claude Neural">Claude Neural</option><option value="Gemini Pro">Gemini Pro</option></select></div><textarea class="ai-textarea" placeholder="Ask the AI anything..." oninput="state.aiPrompt=this.value">'+state.aiPrompt+'</textarea><div class="ai-actions"><button class="ai-btn ai-btn-primary" onclick="sendAiRequest()" '+(state.isAiLoading?'disabled':'')+'>'+(state.isAiLoading?'Processing...':'Submit Query')+'</button><button class="ai-btn ai-btn-outline" onclick="state.aiPrompt=\'\';state.aiResponse=\'\';render()">Clear</button></div><div class="ai-response" style="margin-top:1rem">'+(state.isAiLoading?'<div class="ai-response-placeholder"><div class="spinner"></div></div>':state.aiResponse?state.aiResponse:'<div class="ai-response-placeholder"><div class="icon">🤖</div><p>AI response will appear here</p></div>')+'</div></div><div class="ai-card"><div class="quick-prompts"><h4>Quick Prompts</h4>'+['Explain quantum computing','Write a neural network algorithm','Analyze system performance','Generate code for data processing'].map(p=>'<button class="quick-prompt-btn" onclick="state.aiPrompt=\''+p+'\';render()">▸ '+p+'</button>').join('')+'</div></div></div>';}
+        function renderSettings(){return'<h2 class="section-title">🔧 System Configuration</h2><div class="settings-grid"><div class="settings-card"><h3>Performance</h3>'+[{key:'neuralPower',label:'Neural Power'},{key:'quantumAllocation',label:'Quantum Allocation'},{key:'memoryCache',label:'Memory Cache'}].map(s=>'<div class="setting-row"><div class="setting-label"><span>'+s.label+'</span><span>'+state.settings[s.key]+'%</span></div><input type="range" class="setting-slider" min="0" max="100" value="'+state.settings[s.key]+'" oninput="updateSetting(\''+s.key+'\', parseInt(this.value))"></div>').join('')+'</div><div class="settings-card"><h3>Security</h3>'+[{key:'biometric',label:'Biometric Authentication'},{key:'quantumEncryption',label:'Quantum Encryption'},{key:'intrusionDetection',label:'Intrusion Detection'},{key:'autoUpdate',label:'Auto-Update'}].map(s=>'<div class="toggle-row"><span class="toggle-label">'+s.label+'</span><div class="toggle '+(state.settings[s.key]?'active':'')+'" onclick="updateSetting(\''+s.key+'\', !state.settings[\''+s.key+'\'])"></div></div>').join('')+'</div></div><div class="settings-actions"><button class="btn btn-outline" onclick="resetSettings()">Reset Defaults</button><button class="btn btn-primary" onclick="saveSettings()">Save Settings</button></div><footer><p>NEXUS OS v9.0 • Sentient Operating System</p><p>Powered by Quantum Neural Networks</p></footer>';}
+        runBoot();
+    </script>
+</body>
+</html>
